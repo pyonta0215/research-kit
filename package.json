@@ -1,0 +1,58 @@
+{
+  "name": "@pyonta0215/research-kit",
+  "version": "0.1.0",
+  "description": "Small helpers for LLM research features: reading text, usage and sources out of Responses API results, JSON extraction, and cost/budget accounting that never shows an unmeasured cost as $0.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    "./responses": {
+      "types": "./dist/responses/index.d.ts",
+      "default": "./dist/responses/index.js"
+    },
+    "./json": {
+      "types": "./dist/json/index.d.ts",
+      "default": "./dist/json/index.js"
+    },
+    "./cost": {
+      "types": "./dist/cost/index.d.ts",
+      "default": "./dist/cost/index.js"
+    },
+    "./budget": {
+      "types": "./dist/budget/index.d.ts",
+      "default": "./dist/budget/index.js"
+    }
+  },
+  "typesVersions": {
+    "*": {
+      "responses": [
+        "dist/responses/index.d.ts"
+      ],
+      "json": [
+        "dist/json/index.d.ts"
+      ],
+      "cost": [
+        "dist/cost/index.d.ts"
+      ],
+      "budget": [
+        "dist/budget/index.d.ts"
+      ]
+    }
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "check": "npm run typecheck && npm test && npm run build && git diff --exit-code -- dist"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.2",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.0"
+  }
+}
