@@ -35,21 +35,37 @@ export function findPrice(table, model) {
     return Object.hasOwn(table, model) ? table[model] : undefined;
 }
 export function assertValidPrice(price, label = 'price') {
-    for (const value of [price.inputPerMillionUsd, price.outputPerMillionUsd, price.cachedInputPerMillionUsd]) {
+    const long = price.longContext;
+    for (const value of [
+        price.inputPerMillionUsd,
+        price.outputPerMillionUsd,
+        price.cachedInputPerMillionUsd,
+        price.cacheWritePerMillionUsd,
+        long?.aboveInputTokens,
+        long?.inputMultiplier,
+        long?.outputMultiplier,
+    ]) {
         if (value !== undefined && (!Number.isFinite(value) || value < 0))
             throw new Error(`Invalid token ${label}`);
     }
 }
-/** トークン費用の内訳。キャッシュ済み入力は入力トークン数を超えない範囲で数える。 */
+/**
+ * トークン費用の内訳。キャッシュ済み入力は入力トークン数を超えない範囲で数える。
+ * `inputUsd` はキャッシュされなかった入力の費用で、`cacheWritePerMillionUsd` があればその単価で数えた値。
+ * `longContext` の判定は `usage` を1リクエスト分とみなして行う。
+ */
 export function tokenCostBreakdown(price, usage) {
     assertCount(usage.inputTokens, 'inputTokens');
     assertCount(usage.outputTokens, 'outputTokens');
     const cached = Math.min(usage.cachedInputTokens ?? 0, usage.inputTokens);
     assertCount(cached, 'cachedInputTokens');
+    const long = price.longContext && usage.inputTokens > price.longContext.aboveInputTokens ? price.longContext : undefined;
+    const inputMultiplier = long?.inputMultiplier ?? 1;
+    const outputMultiplier = long?.outputMultiplier ?? 1;
     // 掛けてから割る（整数のトークン数では、割ってから掛けるより丸め誤差が出にくい）
-    const inputMicro = (usage.inputTokens - cached) * price.inputPerMillionUsd;
-    const cachedMicro = cached * (price.cachedInputPerMillionUsd ?? price.inputPerMillionUsd);
-    const outputMicro = usage.outputTokens * price.outputPerMillionUsd;
+    const inputMicro = (usage.inputTokens - cached) * (price.cacheWritePerMillionUsd ?? price.inputPerMillionUsd) * inputMultiplier;
+    const cachedMicro = cached * (price.cachedInputPerMillionUsd ?? price.inputPerMillionUsd) * inputMultiplier;
+    const outputMicro = usage.outputTokens * price.outputPerMillionUsd * outputMultiplier;
     return {
         inputUsd: inputMicro / 1_000_000,
         cachedInputUsd: cachedMicro / 1_000_000,

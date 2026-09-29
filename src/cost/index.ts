@@ -27,6 +27,27 @@ export interface TokenPrice {
   outputPerMillionUsd: number;
   /** 無ければキャッシュ済み入力も通常の入力単価で数える（少なく見積もらない側に倒す） */
   cachedInputPerMillionUsd?: number;
+  /**
+   * キャッシュ書き込みの単価。指定すると、キャッシュされなかった入力はすべて書き込まれたとみなしてこの単価で数える。
+   * Responses API の使用量には書き込んだトークン数が返らないため、少なく見積もらない側に倒した上限値になる。
+   */
+  cacheWritePerMillionUsd?: number;
+  /** 長いプロンプトの割増。無ければ入力トークン数によらず同じ単価で数える */
+  longContext?: LongContextPricing;
+}
+
+/**
+ * 入力トークン数が閾値を超えたリクエストは、リクエスト全体に倍率がかかる
+ * （入力・キャッシュ済み入力・キャッシュ書き込みに inputMultiplier、出力に outputMultiplier）。
+ *
+ * 判定は1リクエスト単位。複数リクエストを合算した使用量で計算すると、合計が閾値を超えただけで倍率がかかり、
+ * 実際より多めの見積もりになる（少なくはならない）。
+ */
+export interface LongContextPricing {
+  /** この入力トークン数を**超える**と倍率がかかる（ちょうど同じなら通常単価） */
+  aboveInputTokens: number;
+  inputMultiplier: number;
+  outputMultiplier: number;
 }
 
 export interface TokenUsage {
@@ -62,7 +83,16 @@ export function findPrice<T>(table: Readonly<Record<string, T>>, model: string):
 }
 
 export function assertValidPrice(price: TokenPrice, label = 'price'): void {
-  for (const value of [price.inputPerMillionUsd, price.outputPerMillionUsd, price.cachedInputPerMillionUsd]) {
+  const long = price.longContext;
+  for (const value of [
+    price.inputPerMillionUsd,
+    price.outputPerMillionUsd,
+    price.cachedInputPerMillionUsd,
+    price.cacheWritePerMillionUsd,
+    long?.aboveInputTokens,
+    long?.inputMultiplier,
+    long?.outputMultiplier,
+  ]) {
     if (value !== undefined && (!Number.isFinite(value) || value < 0)) throw new Error(`Invalid token ${label}`);
   }
 }
@@ -74,16 +104,23 @@ export interface TokenCostBreakdown {
   totalUsd: number;
 }
 
-/** トークン費用の内訳。キャッシュ済み入力は入力トークン数を超えない範囲で数える。 */
+/**
+ * トークン費用の内訳。キャッシュ済み入力は入力トークン数を超えない範囲で数える。
+ * `inputUsd` はキャッシュされなかった入力の費用で、`cacheWritePerMillionUsd` があればその単価で数えた値。
+ * `longContext` の判定は `usage` を1リクエスト分とみなして行う。
+ */
 export function tokenCostBreakdown(price: TokenPrice, usage: TokenUsage): TokenCostBreakdown {
   assertCount(usage.inputTokens, 'inputTokens');
   assertCount(usage.outputTokens, 'outputTokens');
   const cached = Math.min(usage.cachedInputTokens ?? 0, usage.inputTokens);
   assertCount(cached, 'cachedInputTokens');
+  const long = price.longContext && usage.inputTokens > price.longContext.aboveInputTokens ? price.longContext : undefined;
+  const inputMultiplier = long?.inputMultiplier ?? 1;
+  const outputMultiplier = long?.outputMultiplier ?? 1;
   // 掛けてから割る（整数のトークン数では、割ってから掛けるより丸め誤差が出にくい）
-  const inputMicro = (usage.inputTokens - cached) * price.inputPerMillionUsd;
-  const cachedMicro = cached * (price.cachedInputPerMillionUsd ?? price.inputPerMillionUsd);
-  const outputMicro = usage.outputTokens * price.outputPerMillionUsd;
+  const inputMicro = (usage.inputTokens - cached) * (price.cacheWritePerMillionUsd ?? price.inputPerMillionUsd) * inputMultiplier;
+  const cachedMicro = cached * (price.cachedInputPerMillionUsd ?? price.inputPerMillionUsd) * inputMultiplier;
+  const outputMicro = usage.outputTokens * price.outputPerMillionUsd * outputMultiplier;
   return {
     inputUsd: inputMicro / 1_000_000,
     cachedInputUsd: cachedMicro / 1_000_000,
