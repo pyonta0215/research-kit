@@ -92,6 +92,20 @@ const usd =
 | `unmeasured` | 求められなかった。0 円として足さない |
 
 - キャッシュ単価を設定していないモデルでは、キャッシュ済み入力も通常の入力単価で数えます（少なく見積もらない側）
+- `cacheWritePerMillionUsd`（任意）を設定すると、キャッシュされなかった入力はすべてキャッシュに書き込まれたとみなしてその単価で数えます。Responses API の使用量には書き込んだトークン数が返らないため、実際より多めの上限値です
+- `longContext`（任意、`{ aboveInputTokens, inputMultiplier, outputMultiplier }`）を設定すると、入力トークン数が `aboveInputTokens` を**超える**リクエストは全体に倍率がかかります（入力・キャッシュ済み入力・書き込みに `inputMultiplier`、出力に `outputMultiplier`）。判定は1リクエスト単位なので、`tokenCostUsd` は呼び出しごとに使ってください。複数回分を合算した使用量で計算すると多めに出ます
+- どちらも設定しなければ、金額は以前の版と同じです
+
+```ts
+// 例: OpenAI GPT-6 Sol（2026-09-29 に公式のモデル別ページで確認した値）
+const GPT_6_SOL = {
+  inputPerMillionUsd: 2,
+  cachedInputPerMillionUsd: 0.2,
+  cacheWritePerMillionUsd: 2.5, // 入力の 1.25 倍
+  outputPerMillionUsd: 10,
+  longContext: { aboveInputTokens: 272_000, inputMultiplier: 2, outputMultiplier: 1.5 },
+};
+```
 - 検索の件数と課金単位は同じとは限りません。`count: 'search-actions'`（検索だけ）と `'all-calls'`（ページを開く操作も数える、多めの見積もり）を利用側が選びます。検索結果として読んだ内容のトークンは入力トークンとして別に数えられます
 - `billedDurationCost` は実行基盤やブラウザのように時間で課金されるものを、設定した単価で `estimated` として見積もります
 - `sumCosts` は未計測を 0 として足さず、分かった分の合計と未計測の件数を分けて返します

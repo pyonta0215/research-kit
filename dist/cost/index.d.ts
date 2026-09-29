@@ -27,6 +27,26 @@ export interface TokenPrice {
     outputPerMillionUsd: number;
     /** 無ければキャッシュ済み入力も通常の入力単価で数える（少なく見積もらない側に倒す） */
     cachedInputPerMillionUsd?: number;
+    /**
+     * キャッシュ書き込みの単価。指定すると、キャッシュされなかった入力はすべて書き込まれたとみなしてこの単価で数える。
+     * Responses API の使用量には書き込んだトークン数が返らないため、少なく見積もらない側に倒した上限値になる。
+     */
+    cacheWritePerMillionUsd?: number;
+    /** 長いプロンプトの割増。無ければ入力トークン数によらず同じ単価で数える */
+    longContext?: LongContextPricing;
+}
+/**
+ * 入力トークン数が閾値を超えたリクエストは、リクエスト全体に倍率がかかる
+ * （入力・キャッシュ済み入力・キャッシュ書き込みに inputMultiplier、出力に outputMultiplier）。
+ *
+ * 判定は1リクエスト単位。複数リクエストを合算した使用量で計算すると、合計が閾値を超えただけで倍率がかかり、
+ * 実際より多めの見積もりになる（少なくはならない）。
+ */
+export interface LongContextPricing {
+    /** この入力トークン数を**超える**と倍率がかかる（ちょうど同じなら通常単価） */
+    aboveInputTokens: number;
+    inputMultiplier: number;
+    outputMultiplier: number;
 }
 export interface TokenUsage {
     /** キャッシュ済み入力を含む入力トークン数（OpenAI Responses API の input_tokens と同じ数え方） */
@@ -53,7 +73,11 @@ export interface TokenCostBreakdown {
     outputUsd: number;
     totalUsd: number;
 }
-/** トークン費用の内訳。キャッシュ済み入力は入力トークン数を超えない範囲で数える。 */
+/**
+ * トークン費用の内訳。キャッシュ済み入力は入力トークン数を超えない範囲で数える。
+ * `inputUsd` はキャッシュされなかった入力の費用で、`cacheWritePerMillionUsd` があればその単価で数えた値。
+ * `longContext` の判定は `usage` を1リクエスト分とみなして行う。
+ */
 export declare function tokenCostBreakdown(price: TokenPrice, usage: TokenUsage): TokenCostBreakdown;
 export declare function tokenCostUsd(price: TokenPrice, usage: TokenUsage): number;
 export interface WebSearchCounts {

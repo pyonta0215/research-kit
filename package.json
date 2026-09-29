@@ -1,6 +1,6 @@
 {
   "name": "@pyonta0215/research-kit",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Small helpers for LLM research features: reading text, usage and sources out of Responses API results, JSON extraction, and cost/budget accounting that never shows an unmeasured cost as $0.",
   "license": "MIT",
   "type": "module",

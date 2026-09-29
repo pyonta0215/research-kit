@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  assertValidPrice,
   billedDurationCost,
   findPrice,
   requirePrice,
@@ -34,6 +35,54 @@ describe('tokenCostUsd', () => {
 
   it('キャッシュ済みが入力を超えていても入力を上限にする', () => {
     expect(tokenCostUsd(price, { inputTokens: 100, cachedInputTokens: 1000, outputTokens: 0 })).toBeCloseTo((100 / 1e6) * 0.2);
+  });
+
+  const gpt6 = {
+    inputPerMillionUsd: 2,
+    cachedInputPerMillionUsd: 0.2,
+    cacheWritePerMillionUsd: 2.5,
+    outputPerMillionUsd: 10,
+    longContext: { aboveInputTokens: 272_000, inputMultiplier: 2, outputMultiplier: 1.5 },
+  };
+
+  it('書き込み単価も割増も無ければ、今までと同じ金額になる', () => {
+    const usage = { inputTokens: 500_000, cachedInputTokens: 100_000, outputTokens: 20_000 };
+    const breakdown = tokenCostBreakdown(price, usage);
+    expect(breakdown.inputUsd).toBeCloseTo(0.8);
+    expect(breakdown.cachedInputUsd).toBeCloseTo(0.02);
+    expect(breakdown.outputUsd).toBeCloseTo(0.24);
+    expect(breakdown.totalUsd).toBeCloseTo(1.06);
+  });
+
+  it('書き込み単価があれば、キャッシュされなかった入力をすべてその単価で数える（上限値）', () => {
+    const breakdown = tokenCostBreakdown(gpt6, { inputTokens: 200_000, cachedInputTokens: 50_000, outputTokens: 10_000 });
+    expect(breakdown.inputUsd).toBeCloseTo(0.375);
+    expect(breakdown.cachedInputUsd).toBeCloseTo(0.01);
+    expect(breakdown.outputUsd).toBeCloseTo(0.1);
+    expect(breakdown.totalUsd).toBeCloseTo(0.485);
+  });
+
+  it('入力が閾値を超えたらリクエスト全体に倍率をかけ、ちょうど閾値なら通常単価にする', () => {
+    const atThreshold = tokenCostBreakdown(gpt6, { inputTokens: 272_000, outputTokens: 10_000 });
+    expect(atThreshold.inputUsd).toBeCloseTo(0.68);
+    expect(atThreshold.outputUsd).toBeCloseTo(0.1);
+
+    const above = tokenCostBreakdown(gpt6, { inputTokens: 300_000, cachedInputTokens: 100_000, outputTokens: 10_000 });
+    expect(above.inputUsd).toBeCloseTo(200_000 * 2.5 * 2 / 1e6);
+    expect(above.cachedInputUsd).toBeCloseTo(100_000 * 0.2 * 2 / 1e6);
+    expect(above.outputUsd).toBeCloseTo(10_000 * 10 * 1.5 / 1e6);
+    expect(above.totalUsd).toBeCloseTo(1 + 0.04 + 0.15);
+  });
+
+  it('書き込み単価が無くても割増はかかる', () => {
+    const { cacheWritePerMillionUsd: _, ...noWrite } = gpt6;
+    expect(tokenCostUsd(noWrite, { inputTokens: 300_000, outputTokens: 0 })).toBeCloseTo(1.2);
+  });
+
+  it('負の単価や倍率は受け付けない', () => {
+    expect(() => assertValidPrice({ ...gpt6, cacheWritePerMillionUsd: -1 })).toThrow();
+    expect(() => assertValidPrice({ ...gpt6, longContext: { ...gpt6.longContext, inputMultiplier: Number.NaN } })).toThrow();
+    expect(() => assertValidPrice(gpt6)).not.toThrow();
   });
 
   it('負の数や NaN の使用量は受け付けない', () => {
